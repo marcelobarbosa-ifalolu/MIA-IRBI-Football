@@ -1,0 +1,21 @@
+# Como contribuir para o MIA-IRBI Football
+
+## Você pode contribuir de três formas:
+
+1. **Refinando os dados** – Acessando FBref/Transfermarkt e preenchendo o template CSV para 2025-26.
+2. **Aprimorando o modelo** – Testando outros algoritmos (XGBoost, Random Forest) ou adicionando variáveis (ex: distância percorrida na Copa).
+3. **Validando os Odùs** – Transformando a camada interpretativa em variáveis ambientais (calor, altitude, expulsões).
+
+## Padrões de medição
+
+- τ = (anos do técnico) + (% do núcleo com >20 jogos juntos)/10
+- Simetria = 10 - Gini(gols+assistências+desarmes+passes-chave)
+- Para mais detalhes, consulte o preprint.
+
+## Submissão
+
+Abra uma issue ou pull request. Toda contribuição será revisada e, se aprovada, o colaborador será incluído nos autores do próximo release.
+
+## Código de conduta
+
+Pesquisa aberta, dados públicos, reprodutibilidade obrigatória.
