@@ -1,0 +1,78 @@
+"""
+MIA-IRBI Football - Modelo preditivo para Copas do Mundo
+Baseado em maturação coletiva (τ) e horizontalidade tática
+"""
+
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import LeaveOneGroupOut
+from sklearn.metrics import roc_auc_score, accuracy_score
+import warnings
+warnings.filterwarnings('ignore')
+
+# ============================================
+# 1. DADOS (1998-2022 - semifinalistas)
+# ============================================
+data = {
+    'copa': [1998,1998,1998,1998, 2002,2002,2002,2002,
+             2006,2006,2006,2006, 2010,2010,2010,2010,
+             2014,2014,2014,2014, 2018,2018,2018,2018,
+             2022,2022,2022,2022],
+    'selecao': ['França','Brasil','Holanda','Itália',
+                'Brasil','Alemanha','Turquia','Coreia',
+                'Itália','França','Alemanha','Brasil',
+                'Espanha','Holanda','Alemanha','Uruguai',
+                'Alemanha','Argentina','Holanda','Brasil',
+                'França','Croácia','Bélgica','Inglaterra',
+                'Argentina','França','Croácia','Marrocos'],
+    'tau': [5,4,6,4, 4,5,3,2, 6,5,3,2, 8,4,4,3, 9,5,4,2, 6,4,5,3, 7,5,6,3],
+    'simetria': [8,3,7,6, 9,6,7,5, 9,6,8,3, 9,7,7,8, 8,5,7,2, 8,8,6,5, 10,6,7,9],
+    'rho': [8,6,8,7, 7,7,7,8, 8,8,7,5, 10,8,8,7, 9,7,8,4, 9,8,8,6, 8,8,7,9],
+    'irbi': [8,6,7,5, 9,6,8,9, 9,7,8,5, 8,7,8,9, 9,8,8,3, 9,10,7,6, 10,8,9,9],
+    'campeao': [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0]
+}
+df = pd.DataFrame(data)
+
+# ============================================
+# 2. TREINAR MODELO
+# ============================================
+X = df[['tau', 'simetria', 'rho', 'irbi']]
+y = df['campeao']
+groups = df['copa']
+
+model = LogisticRegression(penalty='l2', C=0.5, solver='liblinear')
+logo = LeaveOneGroupOut()
+
+aucs, accs = [], []
+for train_idx, test_idx in logo.split(X, y, groups):
+    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+    model.fit(X_train, y_train)
+    y_prob = model.predict_proba(X_test)[:, 1]
+    y_pred = model.predict(X_test)
+    aucs.append(roc_auc_score(y_test, y_prob))
+    accs.append(accuracy_score(y_test, y_pred))
+
+print(f"AUC médio (validação cruzada): {np.mean(aucs):.3f}")
+print(f"Acurácia média: {np.mean(accs):.3f}")
+
+# Treino final
+model.fit(X, y)
+coefs = pd.DataFrame({'variável': X.columns, 'coeficiente': model.coef_[0]})
+print("\nCoeficientes do modelo:\n", coefs)
+
+# ============================================
+# 3. PREVISÃO PARA 2026
+# ============================================
+candidatos = pd.DataFrame({
+    'selecao': ['França', 'Espanha', 'Japão', 'Portugal', 'Marrocos', 'Brasil'],
+    'tau': [9, 7, 8, 6, 5, 2],
+    'simetria': [8, 9, 8, 8, 9, 4],
+    'rho': [9, 9, 8, 7, 9, 5],
+    'irbi': [8, 8, 9, 7, 9, 4]
+})
+probs = model.predict_proba(candidatos[X.columns])[:, 1]
+candidatos['probabilidade'] = (probs * 100).round(1)
+print("\nPrevisão Copa 2026:")
+print(candidatos.sort_values('probabilidade', ascending=False).to_string(index=False))
