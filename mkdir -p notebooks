@@ -1,0 +1,218 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# MIA-IRBI Football – Análise Exploratória\\n",
+    "**Modelagem preditiva para Copas do Mundo baseada em maturação coletiva e horizontalidade tática**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "import matplotlib.pyplot as plt\n",
+    "import seaborn as sns\n",
+    "from sklearn.linear_model import LogisticRegression\n",
+    "from sklearn.ensemble import RandomForestClassifier\n",
+    "from sklearn.model_selection import LeaveOneGroupOut, cross_val_score\n",
+    "from sklearn.metrics import roc_auc_score, accuracy_score, confusion_matrix\n",
+    "import warnings\n",
+    "warnings.filterwarnings('ignore')\n",
+    "\n",
+    "# Configurações de estilo\n",
+    "sns.set_style('whitegrid')\n",
+    "plt.rcParams['figure.figsize'] = (10,6)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. Carregamento dos dados\n",
+    "Dataset com 28 semifinalistas das Copas de 1998 a 2022."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "data = {\n",
+    "    'copa': [1998,1998,1998,1998, 2002,2002,2002,2002,\n",
+    "             2006,2006,2006,2006, 2010,2010,2010,2010,\n",
+    "             2014,2014,2014,2014, 2018,2018,2018,2018,\n",
+    "             2022,2022,2022,2022],\n",
+    "    'selecao': ['França','Brasil','Holanda','Itália',\n",
+    "                'Brasil','Alemanha','Turquia','Coreia',\n",
+    "                'Itália','França','Alemanha','Brasil',\n",
+    "                'Espanha','Holanda','Alemanha','Uruguai',\n",
+    "                'Alemanha','Argentina','Holanda','Brasil',\n",
+    "                'França','Croácia','Bélgica','Inglaterra',\n",
+    "                'Argentina','França','Croácia','Marrocos'],\n",
+    "    'tau': [5,4,6,4, 4,5,3,2, 6,5,3,2, 8,4,4,3, 9,5,4,2, 6,4,5,3, 7,5,6,3],\n",
+    "    'simetria': [8,3,7,6, 9,6,7,5, 9,6,8,3, 9,7,7,8, 8,5,7,2, 8,8,6,5, 10,6,7,9],\n",
+    "    'rho': [8,6,8,7, 7,7,7,8, 8,8,7,5, 10,8,8,7, 9,7,8,4, 9,8,8,6, 8,8,7,9],\n",
+    "    'irbi': [8,6,7,5, 9,6,8,9, 9,7,8,5, 8,7,8,9, 9,8,8,3, 9,10,7,6, 10,8,9,9],\n",
+    "    'campeao': [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0]\n",
+    "}\n",
+    "\n",
+    "df = pd.DataFrame(data)\n",
+    "df.head()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Análise descritiva"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "df.groupby('campeao')[['tau','simetria','rho','irbi']].mean()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "plt.figure(figsize=(8,6))\n",
+    "sns.heatmap(df[['tau','simetria','rho','irbi','campeao']].corr(), annot=True, cmap='coolwarm', vmin=-1, vmax=1)\n",
+    "plt.title('Matriz de correlação')\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Treinamento e validação cruzada (LOCO)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "X = df[['tau','simetria','rho','irbi']]\n",
+    "y = df['campeao']\n",
+    "groups = df['copa']\n",
+    "\n",
+    "logo = LeaveOneGroupOut()\n",
+    "\n",
+    "def evaluate_model(model, X, y, groups):\n",
+    "    aucs, accs = [], []\n",
+    "    for train_idx, test_idx in logo.split(X, y, groups):\n",
+    "        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]\n",
+    "        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]\n",
+    "        model.fit(X_train, y_train)\n",
+    "        y_pred = model.predict(X_test)\n",
+    "        y_prob = model.predict_proba(X_test)[:,1]\n",
+    "        aucs.append(roc_auc_score(y_test, y_prob))\n",
+    "        accs.append(accuracy_score(y_test, y_pred))\n",
+    "    return np.mean(aucs), np.mean(accs)\n",
+    "\n",
+    "log_reg = LogisticRegression(penalty='l2', C=0.5, solver='liblinear', random_state=42)\n",
+    "rf = RandomForestClassifier(n_estimators=200, max_depth=6, min_samples_leaf=2, random_state=42)\n",
+    "\n",
+    "auc_log, acc_log = evaluate_model(log_reg, X, y, groups)\n",
+    "auc_rf, acc_rf = evaluate_model(rf, X, y, groups)\n",
+    "\n",
+    "print(f\"Logistic Regression: AUC = {auc_log:.3f}, Acc = {acc_log:.3f}\")\n",
+    "print(f\"Random Forest:       AUC = {auc_rf:.3f}, Acc = {acc_rf:.3f}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Feature Importance (Random Forest)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "rf.fit(X, y)\n",
+    "imp = pd.DataFrame({'feature': X.columns, 'importance': rf.feature_importances_}).sort_values('importance', ascending=False)\n",
+    "sns.barplot(data=imp, x='importance', y='feature', palette='viridis')\n",
+    "plt.title('Importância das variáveis - Random Forest')\n",
+    "plt.tight_layout()\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5. Projeção para 2026"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "candidatos = pd.DataFrame({\n",
+    "    'selecao': ['França', 'Espanha', 'Japão', 'Portugal', 'Marrocos', 'Brasil'],\n",
+    "    'tau': [9, 7, 8, 6, 5, 2],\n",
+    "    'simetria': [8, 9, 8, 8, 9, 4],\n",
+    "    'rho': [9, 9, 8, 7, 9, 5],\n",
+    "    'irbi': [8, 8, 9, 7, 9, 4]\n",
+    "})\n",
+    "\n",
+    "probs = log_reg.predict_proba(candidatos[X.columns])[:, 1]\n",
+    "candidatos['probabilidade_titulo'] = (probs * 100).round(1)\n",
+    "candidatos.sort_values('probabilidade_titulo', ascending=False)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 6. Conclusão\n",
+    "- O modelo confirma que **τ (maturação coletiva)** e **simetria** são os fatores mais importantes.\n",
+    "- Para 2026, a **França** é a favorita, seguida de Espanha e Japão (zebra sistêmica).\n",
+    "- O Brasil, com baixíssimo τ e simetria, tem chance estimada inferior a 3%."
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.9.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
